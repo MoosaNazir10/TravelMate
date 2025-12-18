@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "599016202544",
+    "project_id": "travelmate778",
+    "storage_bucket": "travelmate778.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:599016202544:android:0a2b2475a14d0adcc868f5",
+        "android_client_info": {
+          "package_name": "com.android.application"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCFOEs_-SesEIIG4ko0HusaIS10hJ_hj4s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
