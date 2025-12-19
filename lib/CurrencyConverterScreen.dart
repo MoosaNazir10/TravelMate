@@ -1,7 +1,80 @@
 import 'package:flutter/material.dart';
 
-class CurrencyConverterScreen extends StatelessWidget {
+class CurrencyConverterScreen extends StatefulWidget {
   const CurrencyConverterScreen({super.key});
+
+  @override
+  State<CurrencyConverterScreen> createState() => _CurrencyConverterScreenState();
+}
+
+class _CurrencyConverterScreenState extends State<CurrencyConverterScreen> {
+  // Exchange rates with USD as base
+  final Map<String, double> exchangeRates = {
+    'USD': 1.0,
+    'EUR': 0.92,
+    'GBP': 0.79,
+    'PKR': 278.50,
+    'INR': 83.12,
+    'JPY': 149.50,
+    'AUD': 1.52,
+    'CAD': 1.36,
+    'CHF': 0.88,
+    'CNY': 7.24,
+  };
+
+  final Map<String, String> currencyNames = {
+    'USD': 'US Dollar',
+    'EUR': 'Euro',
+    'GBP': 'British Pound',
+    'PKR': 'Pakistani Rupee',
+    'INR': 'Indian Rupee',
+    'JPY': 'Japanese Yen',
+    'AUD': 'Australian Dollar',
+    'CAD': 'Canadian Dollar',
+    'CHF': 'Swiss Franc',
+    'CNY': 'Chinese Yuan',
+  };
+
+  String fromCurrency = 'USD';
+  String toCurrency = 'PKR';
+  final TextEditingController amountController = TextEditingController();
+  double convertedAmount = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    amountController.addListener(_convertCurrency);
+  }
+
+  @override
+  void dispose() {
+    amountController.dispose();
+    super.dispose();
+  }
+
+  void _convertCurrency() {
+    final amount = double.tryParse(amountController.text);
+    if (amount != null) {
+      setState(() {
+        // Convert from source to USD, then USD to target
+        final amountInUSD = amount / exchangeRates[fromCurrency]!;
+        convertedAmount = amountInUSD * exchangeRates[toCurrency]!;
+      });
+    } else {
+      setState(() {
+        convertedAmount = 0.0;
+      });
+    }
+  }
+
+  void _swapCurrencies() {
+    setState(() {
+      final temp = fromCurrency;
+      fromCurrency = toCurrency;
+      toCurrency = temp;
+      _convertCurrency();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -60,7 +133,7 @@ class CurrencyConverterScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
 
-                  buildDropdown("USD - US Dollar"),
+                  buildDropdown(fromCurrency, true),
 
                   const SizedBox(height: 20),
 
@@ -71,10 +144,13 @@ class CurrencyConverterScreen extends StatelessWidget {
 
                   // Swap icon
                   Center(
-                    child: Icon(
-                      Icons.swap_vert,
-                      size: 36,
-                      color: Colors.green,
+                    child: GestureDetector(
+                      onTap: _swapCurrencies,
+                      child: const Icon(
+                        Icons.swap_vert,
+                        size: 36,
+                        color: Colors.green,
+                      ),
                     ),
                   ),
 
@@ -90,12 +166,12 @@ class CurrencyConverterScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
 
-                  buildDropdown("PKR - Pakistani Rupee"),
+                  buildDropdown(toCurrency, false),
 
                   const SizedBox(height: 20),
 
                   // RESULT
-                  buildResult("0.00"),
+                  buildResult(convertedAmount.toStringAsFixed(2)),
                 ],
               ),
             ),
@@ -106,7 +182,7 @@ class CurrencyConverterScreen extends StatelessWidget {
   }
 
   // Dropdown UI
-  Widget buildDropdown(String value) {
+  Widget buildDropdown(String value, bool isFrom) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       height: 55,
@@ -115,12 +191,33 @@ class CurrencyConverterScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.black38),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(value, style: const TextStyle(fontSize: 16)),
-          const Icon(Icons.arrow_drop_down, color: Colors.green),
-        ],
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: value,
+          isExpanded: true,
+          icon: const Icon(Icons.arrow_drop_down, color: Colors.green),
+          items: exchangeRates.keys.map((String currency) {
+            return DropdownMenuItem<String>(
+              value: currency,
+              child: Text(
+                '$currency - ${currencyNames[currency]}',
+                style: const TextStyle(fontSize: 16),
+              ),
+            );
+          }).toList(),
+          onChanged: (String? newValue) {
+            if (newValue != null) {
+              setState(() {
+                if (isFrom) {
+                  fromCurrency = newValue;
+                } else {
+                  toCurrency = newValue;
+                }
+                _convertCurrency();
+              });
+            }
+          },
+        ),
       ),
     );
   }
@@ -134,7 +231,8 @@ class CurrencyConverterScreen extends StatelessWidget {
         border: Border.all(color: Colors.black38),
       ),
       child: TextField(
-        keyboardType: TextInputType.number,
+        controller: amountController,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
         decoration: InputDecoration(
           hintText: hint,
           border: InputBorder.none,

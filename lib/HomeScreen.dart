@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'AccommodationListScreen.dart';
+import 'ExpenseTrackerScreen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -71,11 +73,38 @@ class HomeScreen extends StatelessWidget {
                               child: buildFeature("Currency Converter"),
                             ),
                             const SizedBox(width: 20),
-                            buildFeature("Track Expenses"),
+                            GestureDetector(
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const ExpenseTrackerScreen(),
+                                  ),
+                                );
+                              },
+                              child: buildFeature("Track Expenses"),
+                            ),
                           ],
                         ),
                         const SizedBox(height: 20),
-                        buildFeatureRow("Weather", "Accommodation"),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            buildFeature("Weather"),
+                            const SizedBox(width: 20),
+                            GestureDetector(
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const AccommodationListScreen(),
+                                  ),
+                                );
+                              },
+                              child: buildFeature("Accommodation"),
+                            ),
+                          ],
+                        ),
                         const SizedBox(height: 20),
                         buildFeatureRow("Calendar", ""),
                       ],

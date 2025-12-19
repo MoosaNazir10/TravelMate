@@ -5,6 +5,7 @@ import 'package:travelmate/NewTripScreen.dart';
 import 'package:travelmate/ProfileScreen.dart';
 import 'package:travelmate/SettingsScreen.dart';
 import 'package:travelmate/loginscreen.dart';
+import 'SplashScreen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -18,11 +19,12 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
 
-      // Start the app on the SignUp screen
-      initialRoute: '/signup',
+      // Start the app on the Splash screen
+      initialRoute: '/splash',
 
       // All screens are registered here
       routes: {
+        '/splash': (context) => const SplashScreen(),
         '/signup': (context) => const SignUpScreen(),
         '/login': (context) => const LoginScreen(),
         '/home': (context) => const HomeScreen(),
