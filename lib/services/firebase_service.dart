@@ -15,6 +15,30 @@ class FirebaseService {
   // ACCOMMODATION LOGIC (CRUD)
   // ==================================================
 
+  Future<void> deleteTrip(String tripId) async {
+    if (currentUserId == null) return;
+    await _db
+        .collection('users')
+        .doc(currentUserId)
+        .collection('trips')
+        .doc(tripId)
+        .delete();
+  }
+
+
+  Stream<QuerySnapshot> getTrips() {
+    if (currentUserId == null) {
+      // Return an empty stream if not logged in
+      return const Stream.empty();
+    }
+    return _db
+        .collection('users')
+        .doc(currentUserId)
+        .collection('trips')
+        .snapshots();
+  }
+
+
   // Add new accommodation linked to the user
   Future<void> addAccommodation(Map<String, dynamic> data) async {
     if (currentUserId == null) throw Exception("User not logged in");
@@ -90,7 +114,18 @@ class FirebaseService {
   }
 
   // Inside FirebaseService class in firebase_service.dart
+  Stream<List<Trip>> getTripsStream() {
+    if (currentUserId == null) return Stream.value([]);
 
+    return _db.collection('users')
+        .doc(currentUserId)
+        .collection('trips')
+        .orderBy('time', descending: true) // Order by date
+        .orderBy('created_at', descending: true) // Ensure you have this field in your addTrip method
+        .snapshots()
+        .map((snapshot) =>
+        snapshot.docs.map((doc) => Trip.fromFirestore(doc)).toList());
+  }
   Future<void> addTrip(Map<String, dynamic> data) async {
     if (currentUserId == null) throw Exception("User not logged in");
 

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
-import 'trips_models.dart';
+import 'package:travelmate/services/firebase_service.dart';
+// import 'trips_models.dart';
 import 'AddTripScreen.dart'; // We'll create this for the form
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:travelmate/expense_models.dart';  // Now the ONLY source for Trip
 
 class NewTripScreen extends StatefulWidget {
   const NewTripScreen({super.key});
@@ -11,18 +14,33 @@ class NewTripScreen extends StatefulWidget {
 
 class _NewTripScreenState extends State<NewTripScreen> {
   List<Trip> trips = [];
+  final FirebaseService _firebaseService = FirebaseService();
+  @override
+  void initState() {
+    super.initState();
+    _loadTrips();
+  }
 
+  Future<void> _loadTrips() async {
+    final loadedTrips = await _firebaseService.getTripsList();
+    setState(() {
+      trips = loadedTrips;
+    });
+  }
+  void _deleteTrip(String id) async {
+    // Remove from Firestore
+    await _firebaseService.deleteTrip(id);
+    // Remove locally for immediate UI update
+    setState(() {
+      trips.removeWhere((trip) => trip.id == id);
+    });
+  }
   void _addTrip(Trip trip) {
     setState(() {
       trips.insert(0, trip);
     });
   }
 
-  void _deleteTrip(String id) {
-    setState(() {
-      trips.removeWhere((trip) => trip.id == id);
-    });
-  }
 
   Future<void> _navigateToAddTrip() async {
     final result = await Navigator.push(
@@ -31,10 +49,8 @@ class _NewTripScreenState extends State<NewTripScreen> {
         builder: (context) => const AddTripScreen(),
       ),
     );
-
-    if (result != null && result is Trip) {
-      _addTrip(result);
-    }
+    // This will refresh the list after returning from AddTripScreen
+    await _loadTrips();
   }
 
   @override
@@ -98,16 +114,28 @@ class _NewTripScreenState extends State<NewTripScreen> {
 
                 // Trips List
                 Expanded(
-                  child: trips.isEmpty
-                      ? _buildEmptyState()
-                      : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: trips. length,
-                    itemBuilder:  (context, index) {
-                      return _buildTripCard(trips[index]);
+                  child: StreamBuilder<QuerySnapshot>(
+                    stream: _firebaseService.getTrips(),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return const Center(child: Text("Error loading trips"));
+                      }
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                        return _buildEmptyState();
+                      }
+                      // Parse data
+                      final trips = snapshot.data!.docs.map((doc) => Trip.fromFirestore(doc)).toList();
+                      return ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        itemCount: trips.length,
+                        itemBuilder: (context, index) => _buildTripCard(trips[index]),
+                      );
                     },
                   ),
-                ),
+                )
               ],
             ),
           ),
