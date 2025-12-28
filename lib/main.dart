@@ -12,14 +12,18 @@ import 'package:travelmate/SettingsScreen.dart';
 import 'package:travelmate/ProfileScreen.dart';
 import 'package:travelmate/SplashScreen.dart';
 import 'auth_service.dart';
+import 'package:travelmate/services/notification_service.dart';
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
 
+  WidgetsFlutterBinding.ensureInitialized();
   // Initialize auth service
   await AuthService.initialize();
-
-  runApp(const MyApp());
+  try {
+    await NotificationService.init();
+  } catch (e) {
+    debugPrint("Notification Init Error: $e");
+  }  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {

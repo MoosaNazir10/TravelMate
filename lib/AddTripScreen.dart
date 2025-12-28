@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:travelmate/services/firebase_service.dart'; // Import the service
 import 'trips_models.dart';
+import 'package:travelmate/services/notification_service.dart';
 
 class AddTripScreen extends StatefulWidget {
   const AddTripScreen({super.key});
@@ -80,6 +81,14 @@ class _AddTripScreenState extends State<AddTripScreen> {
 
         // Save using FirebaseService
         await _firebaseService.addTrip(tripData);
+
+        final int notificationId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+        await NotificationService.scheduleTripReminder(
+          id: notificationId,
+          title: "Upcoming Trip: ${nameController.text}",
+          body: "Get ready! Your trip to ${locationController.text} starts soon.",
+          scheduledDate: selectedTime!, // Uses the time you picked in the UI
+        );
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

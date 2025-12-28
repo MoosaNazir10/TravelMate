@@ -5,6 +5,16 @@ allprojects {
     }
 }
 
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        // Ensure you have a recent version of the Android Gradle Plugin
+        classpath("com.android.tools.build:gradle:8.1.0")
+    }
+}
 val newBuildDir: Directory =
     rootProject.layout.buildDirectory
         .dir("../../build")
