@@ -4,8 +4,8 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:flutter_timezone/flutter_timezone.dart';
 
 class NotificationService {
-  static final _notifications = FlutterLocalNotificationsPlugin();
-
+  static final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+  FlutterLocalNotificationsPlugin();
   static Future<void> init() async {
     tz.initializeTimeZones(); // Required for scheduling
 
@@ -15,10 +15,11 @@ class NotificationService {
 
     tz.setLocalLocation(tz.getLocation(timeZoneName));
 
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings(
+        '@mipmap/ic_launcher');
     const iosSettings = DarwinInitializationSettings();
 
-    await _notifications.initialize(
+    await flutterLocalNotificationsPlugin.initialize(
       const InitializationSettings(android: androidSettings, iOS: iosSettings),
     );
   }
@@ -32,7 +33,7 @@ class NotificationService {
     // Check if the time is in the future
     if (scheduledDate.isBefore(DateTime.now())) return;
 
-    await _notifications.zonedSchedule(
+    await flutterLocalNotificationsPlugin.zonedSchedule(
       id,
       title,
       body,
@@ -51,4 +52,28 @@ class NotificationService {
       UILocalNotificationDateInterpretation.absoluteTime,
     );
   }
+
+  static Future<void> scheduleAccommodationReminders({
+    required int baseId,
+    required String hotelName,
+    required DateTime checkInTime,
+    required DateTime checkOutTime,
+  }) async {
+    // 1. Schedule Check-in Reminder
+    await scheduleTripReminder(
+      id: baseId,
+      title: "🏨 Check-in: $hotelName",
+      body: "It's time to check in to your accommodation!",
+      scheduledDate: checkInTime,
+    );
+
+    await scheduleTripReminder(
+      id: baseId + 1, // Unique ID for Check-out
+      title: "🔑 Check-out: $hotelName",
+      body: "Don't forget to check out and gather your belongings!",
+      scheduledDate: checkOutTime,
+    );
+  }
+  static Future<void> cancelNotification(int id) async {
+    await flutterLocalNotificationsPlugin.cancel(id);  }
 }

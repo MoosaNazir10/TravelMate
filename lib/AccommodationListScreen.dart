@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:travelmate/AddAccommodationScreen.dart';
 import 'package:travelmate/services/firebase_service.dart'; // Import your Firebase service
+import 'package:travelmate/services/notification_service.dart';
 
 // Place this in a shared file like accommodation_model.dart or within AccommodationListScreen.dart
 class Accommodation {
@@ -15,6 +16,7 @@ class Accommodation {
   final String notes;
   final double? latitude;  // Required for Map
   final double? longitude; // Required for Map
+  final int? notificationBaseId;
 
   Accommodation({
     required this.id,
@@ -27,6 +29,7 @@ class Accommodation {
     required this.notes,
     this.latitude,
     this.longitude,
+    this.notificationBaseId,
   });
 
   factory Accommodation.fromFirestore(DocumentSnapshot doc) {
@@ -42,6 +45,7 @@ class Accommodation {
       notes: data['notes'] ?? '',
       latitude: data['latitude']?.toDouble(), // Ensures type safety
       longitude: data['longitude']?.toDouble(),
+      notificationBaseId: data['notificationBaseId'],
     );
   }
 }
@@ -288,9 +292,23 @@ class _AccommodationListScreenState extends State<AccommodationListScreen> {
               ),
               IconButton(
                 icon: const Icon(Icons.delete, color: Colors.red),
-                // Call Firebase delete method
-                onPressed: () =>
-                    _firebaseService.deleteAccommodation(accommodation.id),
+                onPressed: () async {
+                  // 1. Cancel the specific alarms on your S20 Ultra
+                  if (accommodation.notificationBaseId != null) {
+                    await NotificationService.cancelNotification(accommodation.notificationBaseId!);
+                    await NotificationService.cancelNotification(accommodation.notificationBaseId! + 1);
+                  }
+
+                  // 2. Delete from Firebase
+                  await _firebaseService.deleteAccommodation(accommodation.id);
+
+                  // Optional: Show a confirmation
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Accommodation and reminders removed')),
+                    );
+                  }
+                },
               ),
             ],
           ),

@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:travelmate/services/firebase_service.dart'; // Import the service
 import 'device_calendar_service.dart';
+import 'package:travelmate/services/notification_service.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
+
 
 class AddAccommodationScreen extends StatefulWidget {
   const AddAccommodationScreen({super.key});
@@ -112,7 +116,20 @@ class _AddAccommodationScreenState extends State<AddAccommodationScreen> {
             child: CircularProgressIndicator(color: Colors.green),
           ),
         );
+        double? lat, lng;
+        try {
+          List<Location> locations = await locationFromAddress(_addressController.text);
+          if (locations.isNotEmpty) {
+            lat = locations.first.latitude;
+            lng = locations.first.longitude;
+          }
+        } catch (e) {
+          debugPrint("Geocoding failed: $e");
+          // Optionally handle case where address isn't found
+        }
 
+
+        final int baseId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
         // Prepare data for Firestore
         final accommodationData = {
           'type': _selectedType.toLowerCase(),
@@ -122,10 +139,27 @@ class _AddAccommodationScreenState extends State<AddAccommodationScreen> {
           'checkOut': _checkOutDate,
           'bookingLink': _bookingLinkController.text,
           'notes': _notesController.text,
+          'notificationBaseId': baseId,
+          'latitude': lat,
+          'longitude': lng,
         };
 
         // Save to Firebase
         await _firebaseService.addAccommodation(accommodationData);
+
+        await NotificationService.scheduleTripReminder(
+          id: baseId,
+          title: "🏨 Check-in: ${_nameController.text}",
+          body: "Time to check in to your stay at ${_nameController.text}!",
+          scheduledDate: _checkInDate!,
+        );
+        await NotificationService.scheduleTripReminder(
+          id: baseId + 1,
+          title: "🔑 Check-out: ${_nameController.text}",
+          body: "Don't forget to check out of ${_nameController.text} today!",
+          scheduledDate: _checkOutDate!,
+        );
+        if (mounted) Navigator.pop(context);
 
         // SYNC TO DEVICE CALENDAR
         await DeviceCalendarService.createEvent(
