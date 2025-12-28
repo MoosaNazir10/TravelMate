@@ -3,8 +3,6 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart'; // Required for LatLng
 import 'package:geolocator/geolocator.dart';
 import 'package:travelmate/services/firebase_service.dart';
-import 'package:travelmate/AccommodationListScreen.dart';
-import 'package:travelmate/expense_models.dart';
 import 'location_service.dart';
 import 'weather_service.dart';
 import 'dart:convert';
@@ -25,7 +23,7 @@ class _MapScreenState extends State<MapScreen> {
 
   Position? _currentPosition;
   List<Marker> _markers = [];
-  List<LatLng> _routePoints = [];
+  List<Polyline> _allAccommodationRoutes = [];
   String _routeDistance = "";
   bool _isLoading = true;
   String _selectedView = 'accommodations'; // Options: 'accommodations', 'trips'
@@ -35,6 +33,23 @@ class _MapScreenState extends State<MapScreen> {
   void initState() {
     super.initState();
     _initializeMap();
+  }
+
+  Marker _buildUserMarker() {
+    if (_currentPosition == null) {
+      return Marker(
+        point: const LatLng(0.0, 0.0), // Dummy location if not loaded
+        width: 60,
+        height: 60,
+        child: Icon(Icons.person_pin_circle, color: Colors.red, size: 40),
+      );
+    }
+    return Marker(
+      point: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+      width: 60,
+      height: 60,
+      child: Icon(Icons.person_pin_circle, color: Colors.red, size: 40),
+    );
   }
 
   Future<void> _initializeMap() async {
@@ -51,42 +66,70 @@ class _MapScreenState extends State<MapScreen> {
       );
     }
 
-    // 3. Load markers from Firestore
-    await _loadMarkersFromFirebase();
+    // 3. Load markers AND routes from Firestore
+    await _loadMarkersAndAllRoutes();
 
     if (mounted) setState(() => _isLoading = false);
   }
 
-  Future<void> _loadMarkersFromFirebase() async {
+  Future<void> _loadMarkersAndAllRoutes() async {
     List<Marker> newMarkers = [];
+    List<Polyline> newPolylines = [];
 
     try {
       if (_selectedView == 'accommodations') {
         final accommodations = await _firebaseService.getAccommodationsList();
+
+        // Always add the user marker
+        if (_currentPosition != null) {
+          newMarkers.add(_buildUserMarker());
+        }
+
+        if (accommodations.isEmpty) {
+          // No accommodations: show only user marker!
+          setState(() {
+            _markers = newMarkers;
+            _allAccommodationRoutes = [];
+          });
+          return;
+        }
+
+        // Add accommodation markers and straight-line polylines to all accoms
         for (var acc in accommodations) {
           if (acc.latitude != null && acc.longitude != null) {
+            final LatLng accLatLng = LatLng(acc.latitude!, acc.longitude!);
+
             newMarkers.add(
               Marker(
-                point: LatLng(acc.latitude!, acc.longitude!),
+                point: accLatLng,
                 width: 80,
-                height: 100, // Increased height to prevent clipping
-                child: GestureDetector(
-                  onTap: () async {
-                    await _calculateRoute(LatLng(acc.latitude!, acc.longitude!));
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text("Distance: $_routeDistance")),
-                      );
-                    }
-                  },
-                  child: _buildMarker(Icons.hotel, Colors.blue, acc.name),
-                ),
+                height: 100,
+                child: _buildMarker(Icons.hotel, Colors.blue, acc.name),
               ),
             );
+
+            // Safety: Only add polyline if user location is available
+            if (_currentPosition != null) {
+              final LatLng userLatLng = LatLng(_currentPosition!.latitude, _currentPosition!.longitude);
+              newPolylines.add(
+                Polyline(
+                  points: [userLatLng, accLatLng],
+                  color: Colors.blue,
+                  strokeWidth: 4,
+                ),
+              );
+            }
           }
         }
       } else if (_selectedView == 'trips') {
         final trips = await _firebaseService.getTripsList();
+
+        // Always add user marker for trips as well
+        if (_currentPosition != null) {
+          newMarkers.add(_buildUserMarker());
+        }
+
+        // (You can add similar polylines for trips if you wish)
         for (var trip in trips) {
           if (trip.latitude != null && trip.longitude != null) {
             newMarkers.add(
@@ -94,17 +137,7 @@ class _MapScreenState extends State<MapScreen> {
                 point: LatLng(trip.latitude!, trip.longitude!),
                 width: 80,
                 height: 100,
-                child: GestureDetector(
-                  onTap: () async {
-                    await _calculateRoute(LatLng(trip.latitude!, trip.longitude!));
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text("Distance: $_routeDistance")),
-                      );
-                    }
-                  },
-                  child: _buildMarker(Icons.location_on, Colors.green, trip.destination),
-                ),
+                child: _buildMarker(Icons.location_on, Colors.green, trip.destination),
               ),
             );
           }
@@ -114,7 +147,10 @@ class _MapScreenState extends State<MapScreen> {
       debugPrint("Map Error: $e");
     }
 
-    if (mounted) setState(() => _markers = newMarkers);
+    if (mounted) setState(() {
+      _markers = newMarkers;
+      _allAccommodationRoutes = newPolylines;
+    });
   }
 
   Widget _buildMarker(IconData icon, Color color, String label) {
@@ -147,7 +183,7 @@ class _MapScreenState extends State<MapScreen> {
             options: MapOptions(
               initialCenter: _currentPosition != null
                   ? LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
-                  : const LatLng(0.0, 0.0), // Use a dummy center instead of bounds
+                  : const LatLng(0.0, 0.0),
               initialZoom: 13.0,
             ),
             children: [
@@ -156,8 +192,9 @@ class _MapScreenState extends State<MapScreen> {
                 subdomains: const ['a', 'b', 'c'],
                 userAgentPackageName: 'com.example.travelmate',
               ),
-
               MarkerLayer(markers: _markers),
+              // --- draw all polylines at once ---
+              PolylineLayer(polylines: _allAccommodationRoutes),
             ],
           ),
           if (_isLoading)
@@ -199,7 +236,7 @@ class _MapScreenState extends State<MapScreen> {
             _selectedView = view;
             _isLoading = true;
           });
-          _loadMarkersFromFirebase().then((_) {
+          _loadMarkersAndAllRoutes().then((_) {
             setState(() => _isLoading = false);
           });
         },
@@ -226,78 +263,5 @@ class _MapScreenState extends State<MapScreen> {
         ),
       ),
     );
-  }
-
-  Future<void> _calculateRoute(LatLng destination) async {
-    if (_currentPosition == null) return;
-
-    final url = Uri.parse(
-        'https://router.project-osrm.org/route/v1/driving/'
-            '${_currentPosition!.longitude},${_currentPosition!.latitude};'
-            '${destination.longitude},${destination.latitude}'
-            '?overview=full&geometries=geojson'
-    );
-
-    try {
-      final response = await http.get(url);
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-
-        // Defensive: Check that 'routes' is not empty and has valid geometry
-        if (data['routes'] == null ||
-            data['routes'].isEmpty ||
-            data['routes'][0]['geometry'] == null ||
-            data['routes'][0]['geometry']['coordinates'] == null) {
-          setState(() {
-            _routePoints = [];
-            _routeDistance = "";
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('No route could be found!'))
-          );
-          return;
-        }
-
-        final route = data['routes'][0];
-
-        // Convert distance from meters to km
-        double distance = route['distance'] / 1000.0;
-
-        // Parse the path coordinates
-        List<dynamic> coords = route['geometry']['coordinates'];
-        List<LatLng> points = coords.map((c) => LatLng(c[1], c[0])).toList();
-
-        setState(() {
-          _routePoints = points;
-          _routeDistance = "${distance.toStringAsFixed(1)} km";
-        });
-
-        // Only fit the route if there are route points
-        if (_routePoints.isNotEmpty) {
-          _fitRoute();
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('No route could be found!'))
-          );
-        }
-
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Route service unavailable. Try again later.'))
-        );
-      }
-    } catch (e) {
-      debugPrint("Routing error: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Navigation error. Please check your network.'))
-      );
-    }
-  }
-
-  void _fitRoute() {
-    // Safety check: if there is no route, don't try to zoom
-    if (_routePoints.isEmpty) return;
-
-
   }
 }
