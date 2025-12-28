@@ -26,7 +26,7 @@ class _MapScreenState extends State<MapScreen> {
   List<Polyline> _allAccommodationRoutes = [];
   String _routeDistance = "";
   bool _isLoading = true;
-  String _selectedView = 'accommodations'; // Options: 'accommodations', 'trips'
+  String _selectedView = 'accommodations';
   Map<String, dynamic>? _weatherData;
 
   @override
@@ -38,7 +38,7 @@ class _MapScreenState extends State<MapScreen> {
   Marker _buildUserMarker() {
     if (_currentPosition == null) {
       return Marker(
-        point: const LatLng(0.0, 0.0), // Dummy location if not loaded
+        point: const LatLng(0.0, 0.0),
         width: 60,
         height: 60,
         child: Icon(Icons.person_pin_circle, color: Colors.red, size: 40),
@@ -52,24 +52,98 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  Future<void> _initializeMap() async {
-    setState(() => _isLoading = true);
+  // Helper: Center and zoom to fit all points (compatible with flutter_map >5.x)
+  void _fitMapToAllPoints() {
+    final allPoints = <LatLng>[];
 
-    // 1. Get user's current location
-    _currentPosition = await LocationService.getCurrentLocation();
-
-    // 2. Fetch weather if enabled
-    if (widget.showWeather && _currentPosition != null) {
-      _weatherData = await WeatherService.getCurrentWeather(
-        _currentPosition!.latitude,
-        _currentPosition!.longitude,
-      );
+    // Add all route points
+    for (final poly in _allAccommodationRoutes) {
+      allPoints.addAll(poly.points);
+    }
+    // Add user location & accommodation markers if no routes
+    if (_allAccommodationRoutes.isEmpty) {
+      if (_currentPosition != null) {
+        allPoints.add(LatLng(_currentPosition!.latitude, _currentPosition!.longitude));
+      }
+      for (final marker in _markers) {
+        allPoints.add(marker.point);
+      }
     }
 
-    // 3. Load markers AND routes from Firestore
-    await _loadMarkersAndAllRoutes();
+    if (allPoints.isEmpty) return;
 
-    if (mounted) setState(() => _isLoading = false);
+    if (allPoints.length == 1) {
+      _mapController.move(allPoints.first, 13.0);
+    } else if (allPoints.length > 1) {
+      final center = _getBoundsCenter(allPoints);
+      final zoom = _getBoundsZoom(allPoints);
+      _mapController.move(center, zoom);
+    }
+  }
+
+  // Helpers for calculating map bounds manually
+  LatLng _getBoundsCenter(List<LatLng> points) {
+    double minLat = points.first.latitude, maxLat = points.first.latitude;
+    double minLng = points.first.longitude, maxLng = points.first.longitude;
+    for (var point in points) {
+      if (point.latitude < minLat) minLat = point.latitude;
+      if (point.latitude > maxLat) maxLat = point.latitude;
+      if (point.longitude < minLng) minLng = point.longitude;
+      if (point.longitude > maxLng) maxLng = point.longitude;
+    }
+    return LatLng(
+      (minLat + maxLat) / 2,
+      (minLng + maxLng) / 2,
+    );
+  }
+
+  double _getBoundsZoom(List<LatLng> points) {
+    // Basic logic: farther apart means zoom out
+    // You can fine-tune this, but start simple:
+    final center = _getBoundsCenter(points);
+    double maxDistance = 0;
+    final Distance d = Distance();
+    for (final point in points) {
+      final dist = d(center, point);
+      if (dist > maxDistance) maxDistance = dist;
+    }
+    // These formulas produce pretty good world-to-street level zooms:
+    if (maxDistance < 300) return 14;       // City block
+    if (maxDistance < 1000) return 13;      // City
+    if (maxDistance < 3000) return 12;      // Metro
+    if (maxDistance < 10000) return 10.5;   // Region
+    if (maxDistance < 50000) return 9;
+    if (maxDistance < 150000) return 7.5;
+    return 5; // Continent!
+  }
+
+  Future<List<LatLng>> _fetchRoutePoints(LatLng from, LatLng to) async {
+    try {
+      final url = Uri.parse(
+          'https://router.project-osrm.org/route/v1/driving/'
+              '${from.longitude},${from.latitude};'
+              '${to.longitude},${to.latitude}'
+              '?overview=full&geometries=geojson'
+      );
+
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+
+        if (data['routes'] == null ||
+            data['routes'].isEmpty ||
+            data['routes'][0]['geometry'] == null ||
+            data['routes'][0]['geometry']['coordinates'] == null) {
+          return [];
+        }
+        List<dynamic> coords = data['routes'][0]['geometry']['coordinates'];
+        List<LatLng> points = coords.map((c) => LatLng(c[1], c[0])).toList();
+        return points;
+      }
+    } catch (e) {
+      debugPrint('Route API error: $e');
+    }
+    return [];
   }
 
   Future<void> _loadMarkersAndAllRoutes() async {
@@ -80,21 +154,19 @@ class _MapScreenState extends State<MapScreen> {
       if (_selectedView == 'accommodations') {
         final accommodations = await _firebaseService.getAccommodationsList();
 
-        // Always add the user marker
         if (_currentPosition != null) {
           newMarkers.add(_buildUserMarker());
         }
 
         if (accommodations.isEmpty) {
-          // No accommodations: show only user marker!
           setState(() {
             _markers = newMarkers;
             _allAccommodationRoutes = [];
           });
+          _fitMapToAllPoints();
           return;
         }
 
-        // Add accommodation markers and straight-line polylines to all accoms
         for (var acc in accommodations) {
           if (acc.latitude != null && acc.longitude != null) {
             final LatLng accLatLng = LatLng(acc.latitude!, acc.longitude!);
@@ -108,28 +180,27 @@ class _MapScreenState extends State<MapScreen> {
               ),
             );
 
-            // Safety: Only add polyline if user location is available
             if (_currentPosition != null) {
               final LatLng userLatLng = LatLng(_currentPosition!.latitude, _currentPosition!.longitude);
-              newPolylines.add(
-                Polyline(
-                  points: [userLatLng, accLatLng],
-                  color: Colors.blue,
-                  strokeWidth: 4,
-                ),
-              );
+              List<LatLng> routePoints = await _fetchRoutePoints(userLatLng, accLatLng);
+              if (routePoints.isNotEmpty) {
+                newPolylines.add(
+                  Polyline(
+                    points: routePoints,
+                    color: Colors.blue,
+                    strokeWidth: 4,
+                  ),
+                );
+              }
             }
           }
         }
       } else if (_selectedView == 'trips') {
         final trips = await _firebaseService.getTripsList();
 
-        // Always add user marker for trips as well
         if (_currentPosition != null) {
           newMarkers.add(_buildUserMarker());
         }
-
-        // (You can add similar polylines for trips if you wish)
         for (var trip in trips) {
           if (trip.latitude != null && trip.longitude != null) {
             newMarkers.add(
@@ -151,6 +222,25 @@ class _MapScreenState extends State<MapScreen> {
       _markers = newMarkers;
       _allAccommodationRoutes = newPolylines;
     });
+
+    _fitMapToAllPoints();
+  }
+
+  Future<void> _initializeMap() async {
+    setState(() => _isLoading = true);
+
+    _currentPosition = await LocationService.getCurrentLocation();
+
+    if (widget.showWeather && _currentPosition != null) {
+      _weatherData = await WeatherService.getCurrentWeather(
+        _currentPosition!.latitude,
+        _currentPosition!.longitude,
+      );
+    }
+
+    await _loadMarkersAndAllRoutes();
+
+    if (mounted) setState(() => _isLoading = false);
   }
 
   Widget _buildMarker(IconData icon, Color color, String label) {
@@ -193,7 +283,6 @@ class _MapScreenState extends State<MapScreen> {
                 userAgentPackageName: 'com.example.travelmate',
               ),
               MarkerLayer(markers: _markers),
-              // --- draw all polylines at once ---
               PolylineLayer(polylines: _allAccommodationRoutes),
             ],
           ),
