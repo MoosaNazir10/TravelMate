@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:travelmate/services/firebase_service.dart'; // Import the service
-import 'trips_models.dart';
+import 'package:travelmate/services/firebase_service.dart';
 import 'package:travelmate/services/notification_service.dart';
+import 'package:geocoding/geocoding.dart'; //
 
 class AddTripScreen extends StatefulWidget {
   const AddTripScreen({super.key});
@@ -11,12 +11,13 @@ class AddTripScreen extends StatefulWidget {
 }
 
 class _AddTripScreenState extends State<AddTripScreen> {
+  double? _selectedLatitude;
+  double? _selectedLongitude;
   final _formKey = GlobalKey<FormState>();
   final TextEditingController nameController = TextEditingController();
   final TextEditingController locationController = TextEditingController();
   final TextEditingController descriptionController = TextEditingController();
-  final FirebaseService _firebaseService =
-      FirebaseService(); // Service instance
+  final FirebaseService _firebaseService = FirebaseService();
 
   DateTime? selectedTime;
   bool _isLoading = false;
@@ -57,7 +58,7 @@ class _AddTripScreenState extends State<AddTripScreen> {
     }
   }
 
-  // ✅ UPDATED METHOD TO SAVE TO FIREBASE
+  // ✅ FULLY UPDATED METHOD WITH AUTOMATIC GEOCODING
   void _saveTrip() async {
     if (_formKey.currentState!.validate()) {
       if (selectedTime == null) {
@@ -70,24 +71,39 @@ class _AddTripScreenState extends State<AddTripScreen> {
       setState(() => _isLoading = true);
 
       try {
-        // Prepare the data for Firestore
+        // --- STEP 1: AUTOMATICALLY GET COORDINATES FROM ADDRESS ---
+        try {
+          List<Location> locations = await locationFromAddress(locationController.text);
+          if (locations.isNotEmpty) {
+            _selectedLatitude = locations.first.latitude;
+            _selectedLongitude = locations.first.longitude;
+          }
+        } catch (geoError) {
+          debugPrint("Geocoding failed: $geoError");
+          // If geocoding fails, we still continue but coordinates will be null
+        }
+
+        // --- STEP 2: PREPARE DATA ---
         final tripData = {
           'name': nameController.text,
           'location': locationController.text,
+          'destination': locationController.text, // Added for model compatibility
           'time': selectedTime,
-          // Firestore handles DateTime objects automatically
           'description': descriptionController.text,
+          'latitude': _selectedLatitude,
+          'longitude': _selectedLongitude,
         };
 
-        // Save using FirebaseService
+        // --- STEP 3: SAVE TO FIREBASE ---
         await _firebaseService.addTrip(tripData);
 
+        // --- STEP 4: SCHEDULE NOTIFICATION ---
         final int notificationId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
         await NotificationService.scheduleTripReminder(
           id: notificationId,
           title: "Upcoming Trip: ${nameController.text}",
           body: "Get ready! Your trip to ${locationController.text} starts soon.",
-          scheduledDate: selectedTime!, // Uses the time you picked in the UI
+          scheduledDate: selectedTime!,
         );
 
         if (mounted) {
@@ -97,7 +113,7 @@ class _AddTripScreenState extends State<AddTripScreen> {
               backgroundColor: Colors.green,
             ),
           );
-          Navigator.pop(context); // Return to the previous screen
+          Navigator.pop(context);
         }
       } catch (e) {
         if (mounted) {
@@ -119,7 +135,6 @@ class _AddTripScreenState extends State<AddTripScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // Background
           Container(
             decoration: const BoxDecoration(
               image: DecorationImage(
@@ -128,10 +143,7 @@ class _AddTripScreenState extends State<AddTripScreen> {
               ),
             ),
           ),
-
-          // Overlay
           Container(color: Colors.white.withOpacity(0.7)),
-
           SafeArea(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -144,9 +156,7 @@ class _AddTripScreenState extends State<AddTripScreen> {
                       icon: const Icon(Icons.arrow_back, color: Colors.green),
                       onPressed: () => Navigator.pop(context),
                     ),
-
                     const SizedBox(height: 10),
-
                     const Center(
                       child: Text(
                         "New Trip",
@@ -157,9 +167,7 @@ class _AddTripScreenState extends State<AddTripScreen> {
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 40),
-
                     buildField(
                       Icons.edit,
                       "Trip Name",
@@ -169,20 +177,17 @@ class _AddTripScreenState extends State<AddTripScreen> {
                           : null,
                     ),
                     const SizedBox(height: 20),
-
                     buildDateTimeField(),
                     const SizedBox(height: 20),
-
                     buildField(
                       Icons.location_on,
-                      "Location",
+                      "Location (City, Country)", // Hint for better accuracy
                       locationController,
                       validator: (value) => (value == null || value.isEmpty)
                           ? 'Please enter location'
                           : null,
                     ),
                     const SizedBox(height: 20),
-
                     buildField(
                       Icons.description,
                       "Description",
@@ -190,8 +195,6 @@ class _AddTripScreenState extends State<AddTripScreen> {
                       maxLines: 3,
                     ),
                     const SizedBox(height: 40),
-
-                    // Save button with loading state
                     Center(
                       child: SizedBox(
                         width: 200,
@@ -206,20 +209,20 @@ class _AddTripScreenState extends State<AddTripScreen> {
                           ),
                           child: _isLoading
                               ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: CircularProgressIndicator(
-                                    color: Colors.yellow,
-                                    strokeWidth: 2,
-                                  ),
-                                )
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.yellow,
+                              strokeWidth: 2,
+                            ),
+                          )
                               : const Text(
-                                  "Save",
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    color: Colors.yellow,
-                                  ),
-                                ),
+                            "Save",
+                            style: TextStyle(
+                              fontSize: 18,
+                              color: Colors.yellow,
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -235,12 +238,12 @@ class _AddTripScreenState extends State<AddTripScreen> {
   }
 
   Widget buildField(
-    IconData icon,
-    String hint,
-    TextEditingController controller, {
-    int maxLines = 1,
-    String? Function(String?)? validator,
-  }) {
+      IconData icon,
+      String hint,
+      TextEditingController controller, {
+        int maxLines = 1,
+        String? Function(String?)? validator,
+      }) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,

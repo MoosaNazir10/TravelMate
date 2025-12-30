@@ -87,33 +87,39 @@ class Trip {
   final String id;
   final String name;
   final String location;
-  final DateTime time;
+  final DateTime? time;
   final String description;
   final String destination;
+  final double? latitude;
+  final double? longitude;
 
   Trip({
     required this.id,
     required this.name,
     required this.location,
-    required this.time,
+    this.time,
     required this.description,
     required this.destination,
+    this.latitude,
+    this.longitude,
   });
 
-  // Convert Firestore Document to Trip Object
   factory Trip.fromFirestore(DocumentSnapshot doc) {
     Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
     return Trip(
       id: doc.id,
-      destination: data['destination'] ?? data['location'] ?? 'Unknown', // Fallback check
       name: data['name'] ?? '',
       location: data['location'] ?? '',
+      destination: data['destination'] ?? data['location'] ?? 'Unknown',
       time: (data['time'] as Timestamp).toDate(),
       description: data['description'] ?? '',
+      latitude: data['latitude']?.toDouble(),
+      longitude: data['longitude']?.toDouble(),
     );
   }
-
-  double? get latitude => null;
-
-  double? get longitude => null;
 }
+
+  // double? get latitude => null;
+  //
+  // double? get longitude => null;
+
