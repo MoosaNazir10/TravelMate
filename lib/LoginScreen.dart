@@ -11,15 +11,15 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  // Controllers to capture user input
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
 
-  // Instance of your AuthService logic
   final AuthService _authService = AuthService();
   bool _isLoading = false;
 
-  // Handle Firebase Email/Password Login
+  // ✅ State variable to track password visibility
+  bool _isPasswordVisible = false;
+
   Future<void> _handleLogin() async {
     String email = emailController.text.trim();
     String password = passwordController.text.trim();
@@ -34,11 +34,8 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Calling the signIn method from your AuthService
       final user = await _authService.signIn(email: email, password: password);
-
       if (user != null && mounted) {
-        // Navigate to HomeScreen using the route defined in main.dart
         Navigator.pushReplacementNamed(context, '/home');
       }
     } catch (e) {
@@ -55,13 +52,10 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // Handle Google Sign-In using AuthService
   Future<void> _handleGoogleSignIn() async {
     setState(() => _isLoading = true);
-
     try {
       final success = await AuthService.signInWithGoogle();
-
       if (success && mounted) {
         Navigator.pushReplacementNamed(context, '/home');
       } else {
@@ -93,7 +87,6 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // Background Image
           Container(
             decoration: const BoxDecoration(
               image: DecorationImage(
@@ -102,12 +95,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
           ),
-
-          // White overlay for readability
-          Container(
-            color: Colors.white.withOpacity(0.7),
-          ),
-
+          Container(color: Colors.white.withOpacity(0.7)),
           Center(
             child: SingleChildScrollView(
               child: Padding(
@@ -126,15 +114,14 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 40),
 
                     // EMAIL FIELD
-                    _buildTextField(emailController, "Email", false),
+                    _buildTextField(emailController, "Email", false, isPassword: false),
                     const SizedBox(height: 20),
 
-                    // PASSWORD FIELD
-                    _buildTextField(passwordController, "Password", true),
+                    // ✅ PASSWORD FIELD WITH TOGGLE
+                    _buildTextField(passwordController, "Password", !_isPasswordVisible, isPassword: true),
 
                     const SizedBox(height: 8),
 
-                    // FORGOT PASSWORD logic
                     Align(
                       alignment: Alignment.centerRight,
                       child: GestureDetector(
@@ -159,7 +146,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
                     const SizedBox(height: 30),
 
-                    // CONTINUE BUTTON (LOGIN)
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
@@ -184,7 +170,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     _buildDivider(),
                     const SizedBox(height: 20),
 
-                    // GOOGLE SIGN-IN BUTTON
                     GestureDetector(
                       onTap: _isLoading ? null : _handleGoogleSignIn,
                       child: Container(
@@ -207,7 +192,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
                     const SizedBox(height: 25),
 
-                    // SIGN UP LINK
                     GestureDetector(
                       onTap: () => Navigator.pushNamed(context, '/signup'),
                       child: const Text.rich(
@@ -234,8 +218,8 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // UI Helper for TextFields
-  Widget _buildTextField(TextEditingController controller, String hint, bool obscure) {
+  // ✅ Updated UI Helper with visibility toggle
+  Widget _buildTextField(TextEditingController controller, String hint, bool obscure, {required bool isPassword}) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -249,12 +233,25 @@ class _LoginScreenState extends State<LoginScreen> {
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           hintText: hint,
+          // ✅ Add suffixIcon only for password field
+          suffixIcon: isPassword
+              ? IconButton(
+            icon: Icon(
+              _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+              color: Colors.grey,
+            ),
+            onPressed: () {
+              setState(() {
+                _isPasswordVisible = !_isPasswordVisible;
+              });
+            },
+          )
+              : null,
         ),
       ),
     );
   }
 
-  // UI Helper for Divider
   Widget _buildDivider() {
     return Row(
       children: [
