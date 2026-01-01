@@ -6,6 +6,7 @@ import 'package:travelmate/services/firebase_service.dart';
 import 'location_service.dart';
 import 'weather_service.dart';
 import 'dart:convert';
+import 'dart:async'; // ✅ Required for StreamSubscription
 import 'package:http/http.dart' as http;
 
 class MapScreen extends StatefulWidget {
@@ -21,17 +22,50 @@ class _MapScreenState extends State<MapScreen> {
   final MapController _mapController = MapController();
   final FirebaseService _firebaseService = FirebaseService();
 
+  // ✅ Live Tracking Variables
+  StreamSubscription<Position>? _positionStream;
   Position? _currentPosition;
+
   List<Marker> _markers = [];
   List<Polyline> _allRoutes = [];
   bool _isLoading = true;
   String _selectedView = 'accommodations';
-  Map<String, dynamic>? _weatherData;
+  String _routeDistance = "";
 
   @override
   void initState() {
     super.initState();
     _initializeMap();
+    _startLiveTracking(); // ✅ Start listening to GPS
+  }
+
+  @override
+  void dispose() {
+    _positionStream?.cancel(); // ✅ Crucial: Stop GPS when leaving screen to save battery
+    super.dispose();
+  }
+
+  // ✅ NEW: Continuous Location Listener
+  void _startLiveTracking() {
+    const LocationSettings locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 10, // Updates every 10 meters you move
+    );
+
+    _positionStream = Geolocator.getPositionStream(locationSettings: locationSettings)
+        .listen((Position position) {
+      if (mounted) {
+        setState(() {
+          _currentPosition = position;
+        });
+
+        // Refresh the route line from your new position
+        _loadMarkersAndAllRoutes();
+
+        // Optional: Keep camera following the user
+        // _mapController.move(LatLng(position.latitude, position.longitude), _mapController.camera.zoom);
+      }
+    });
   }
 
   Marker _buildUserMarker() {
@@ -47,7 +81,6 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  // Helper to fetch coordinates from OSRM API
   Future<List<LatLng>> _fetchRoutePoints(LatLng from, LatLng to) async {
     final url = Uri.parse(
         'https://router.project-osrm.org/route/v1/driving/'
@@ -85,17 +118,15 @@ class _MapScreenState extends State<MapScreen> {
             newMarkers.add(Marker(
               point: dest,
               width: 80, height: 100,
-              child: _buildMarker(Icons.hotel, Colors.blue, acc.name),
+              child: _buildMarker(Icons.hotel, Colors.blue, acc.name, dest),
             ));
 
-            // Fetch Blue Route for Hotels
             if (_currentPosition != null) {
               final points = await _fetchRoutePoints(
-                  LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-                  dest
-              );
+                  LatLng(_currentPosition!.latitude, _currentPosition!.longitude), dest);
               if (points.isNotEmpty) {
                 newPolylines.add(Polyline(points: points, color: Colors.blue, strokeWidth: 4));
+                _calculateDistance(points);
               }
             }
           }
@@ -108,17 +139,15 @@ class _MapScreenState extends State<MapScreen> {
             newMarkers.add(Marker(
               point: dest,
               width: 80, height: 100,
-              child: _buildMarker(Icons.location_on, Colors.green, trip.destination),
+              child: _buildMarker(Icons.location_on, Colors.green, trip.destination, dest),
             ));
 
-            // Fetch Green Route for Trips
             if (_currentPosition != null) {
               final points = await _fetchRoutePoints(
-                  LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-                  dest
-              );
+                  LatLng(_currentPosition!.latitude, _currentPosition!.longitude), dest);
               if (points.isNotEmpty) {
                 newPolylines.add(Polyline(points: points, color: Colors.green, strokeWidth: 4));
+                _calculateDistance(points);
               }
             }
           }
@@ -133,32 +162,64 @@ class _MapScreenState extends State<MapScreen> {
         _markers = newMarkers;
         _allRoutes = newPolylines;
       });
-      _fitMapToAllPoints();
     }
   }
 
-  // ... (Keep your _fitMapToAllPoints, _getBoundsCenter, _getBoundsZoom functions exactly as they are)
+  void _calculateDistance(List<LatLng> points) {
+    double totalMeters = 0;
+    const Distance distanceCalc = Distance();
+    for (int i = 0; i < points.length - 1; i++) {
+      totalMeters += distanceCalc(points[i], points[i + 1]);
+    }
+    setState(() {
+      _routeDistance = "${(totalMeters / 1000).toStringAsFixed(1)} km";
+    });
+  }
 
   Future<void> _initializeMap() async {
+    LocationPermission permission = await Geolocator.checkPermission();
+
+    // If we only have "While in Use", ask for "Always"
+    if (permission == LocationPermission.whileInUse) {
+      permission = await Geolocator.requestPermission();
+    }
+
+    // Now proceed with normal initialization
     setState(() => _isLoading = true);
     _currentPosition = await LocationService.getCurrentLocation();
     await _loadMarkersAndAllRoutes();
     if (mounted) setState(() => _isLoading = false);
   }
 
-  Widget _buildMarker(IconData icon, Color color, String label) {
-    return Column(
-      children: [
-        Icon(icon, color: color, size: 30),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.8),
-            borderRadius: BorderRadius.circular(4),
+  // ✅ Interactive Marker Builder
+  Widget _buildMarker(IconData icon, Color color, String label, LatLng destination) {
+    return GestureDetector(
+      onTap: () {
+        if (_currentPosition != null) {
+          final start = LatLng(_currentPosition!.latitude, _currentPosition!.longitude);
+          final double dist = const Distance().as(LengthUnit.Kilometer, start, destination);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('$label is ${dist.toStringAsFixed(1)} km away'),
+              backgroundColor: color,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      },
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 30),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.8),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
           ),
-          child: Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -178,18 +239,41 @@ class _MapScreenState extends State<MapScreen> {
             children: [
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.travelmate.app.v1.routing.fix',
+                userAgentPackageName: 'com.travelmate.app',
               ),
-              PolylineLayer(polylines: _allRoutes), // Displays the green or blue routes
+              PolylineLayer(polylines: _allRoutes),
               MarkerLayer(markers: _markers),
             ],
           ),
+
+          // ✅ Distance Overlay
+          if (_routeDistance.isNotEmpty && !_isLoading)
+            Positioned(
+              top: 50,
+              right: 20,
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 5)],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text("Travel Distance", style: TextStyle(fontSize: 10, color: Colors.grey)),
+                    Text(_routeDistance, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green)),
+                  ],
+                ),
+              ),
+            ),
+
           if (_isLoading) const Center(child: CircularProgressIndicator(color: Colors.green)),
           Positioned(bottom: 20, left: 20, right: 20, child: _buildViewToggle()),
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _fitMapToAllPoints, // Calls the method you just defined
+        onPressed: _fitMapToAllPoints,
         backgroundColor: Colors.green,
         child: const Icon(Icons.center_focus_strong, color: Colors.white),
       ),
@@ -221,6 +305,7 @@ class _MapScreenState extends State<MapScreen> {
           setState(() {
             _selectedView = view;
             _isLoading = true;
+            _routeDistance = "";
           });
           await _loadMarkersAndAllRoutes();
           setState(() => _isLoading = false);
@@ -243,16 +328,12 @@ class _MapScreenState extends State<MapScreen> {
       ),
     );
   }
-  // 1. The main function that moves the camera
+
   void _fitMapToAllPoints() {
     final allPoints = <LatLng>[];
-
-    // Collect all points from the route lines
     for (final poly in _allRoutes) {
       allPoints.addAll(poly.points);
     }
-
-    // If no routes, collect points from markers
     if (_allRoutes.isEmpty) {
       if (_currentPosition != null) {
         allPoints.add(LatLng(_currentPosition!.latitude, _currentPosition!.longitude));
@@ -261,20 +342,13 @@ class _MapScreenState extends State<MapScreen> {
         allPoints.add(marker.point);
       }
     }
-
     if (allPoints.isEmpty) return;
 
-    // Move camera based on points found
-    if (allPoints.length == 1) {
-      _mapController.move(allPoints.first, 13.0);
-    } else {
-      final center = _getBoundsCenter(allPoints);
-      final zoom = _getBoundsZoom(allPoints);
-      _mapController.move(center, zoom);
-    }
+    final center = _getBoundsCenter(allPoints);
+    final zoom = _getBoundsZoom(allPoints);
+    _mapController.move(center, zoom);
   }
 
-  // 2. Helper to find the center point of the view
   LatLng _getBoundsCenter(List<LatLng> points) {
     double minLat = points.first.latitude, maxLat = points.first.latitude;
     double minLng = points.first.longitude, maxLng = points.first.longitude;
@@ -287,7 +361,6 @@ class _MapScreenState extends State<MapScreen> {
     return LatLng((minLat + maxLat) / 2, (minLng + maxLng) / 2);
   }
 
-  // 3. Helper to calculate how far to zoom out
   double _getBoundsZoom(List<LatLng> points) {
     final center = _getBoundsCenter(points);
     double maxDistance = 0;
@@ -296,11 +369,9 @@ class _MapScreenState extends State<MapScreen> {
       final dist = d(center, point);
       if (dist > maxDistance) maxDistance = dist;
     }
-    // Simple zoom levels based on distance (meters)
     if (maxDistance < 300) return 14;
     if (maxDistance < 1000) return 13;
     if (maxDistance < 3000) return 12;
-    if (maxDistance < 10000) return 10.5;
-    return 8;
+    return 10.5;
   }
 }

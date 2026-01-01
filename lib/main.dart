@@ -20,7 +20,7 @@ void main() async {
   // Initialize auth service
   await AuthService.initialize();
   try {
-    await NotificationService.init();
+    await  NotificationService.init();
   } catch (e) {
     debugPrint("Notification Init Error: $e");
   }  runApp(const MyApp());
