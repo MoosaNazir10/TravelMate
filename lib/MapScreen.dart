@@ -192,16 +192,24 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   // ✅ Interactive Marker Builder
+  // ✅ Updated Marker Builder to show Route Distance
   Widget _buildMarker(IconData icon, Color color, String label, LatLng destination) {
     return GestureDetector(
       onTap: () {
         if (_currentPosition != null) {
-          final start = LatLng(_currentPosition!.latitude, _currentPosition!.longitude);
-          final double dist = const Distance().as(LengthUnit.Kilometer, start, destination);
+          // If the route has been loaded, use the calculated road distance
+          // otherwise, fallback to direct distance as a backup.
+          String displayDistance = _routeDistance.isNotEmpty
+              ? _routeDistance
+              : "${(const Distance().as(LengthUnit.Kilometer,
+              LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+              destination)).toStringAsFixed(1)} km (direct)";
+
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('$label is ${dist.toStringAsFixed(1)} km away'),
+              content: Text('$label is $displayDistance away via road'),
               backgroundColor: color,
+              duration: const Duration(seconds: 3),
               behavior: SnackBarBehavior.floating,
             ),
           );
@@ -216,7 +224,11 @@ class _MapScreenState extends State<MapScreen> {
               color: Colors.white.withOpacity(0.8),
               borderRadius: BorderRadius.circular(4),
             ),
-            child: Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
+            child: Text(
+                label,
+                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                overflow: TextOverflow.ellipsis
+            ),
           ),
         ],
       ),
