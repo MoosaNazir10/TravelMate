@@ -17,30 +17,25 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final AuthService _authService = AuthService();
   bool _isLoading = false;
 
-  void _handleSignUp() async {
-    if (emailController.text.isEmpty || passwordController.text.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Fill all fields")));
-      return;
-    }
-
-    setState(() => _isLoading = true);
+  Future<void> _handleSignUp() async {
     try {
+      // 1. Create the user
       final user = await _authService.signUp(
         email: emailController.text.trim(),
         password: passwordController.text.trim(),
       );
 
       if (user != null && mounted) {
-        Navigator.pushReplacementNamed(context, '/home');
+        // ✅ 2. IMMEDIATELY send the verification email
+        await _authService.sendVerificationEmail();
+
+        // ✅ 3. FORCE NAVIGATION to VerifyEmailScreen (Do NOT go to /home)
+        Navigator.pushReplacementNamed(context, '/verify-email');
       }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.toString())));
-    } finally {
-      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
     }
   }
 

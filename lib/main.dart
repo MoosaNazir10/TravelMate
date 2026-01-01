@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // ✅ Required for StreamBuilder
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:travelmate/AccommodationListScreen.dart';
 import 'package:travelmate/ExpenseTrackerScreen.dart';
 import 'package:travelmate/SignUpScreen.dart';
@@ -11,13 +11,14 @@ import 'package:travelmate/CurrencyConverterScreen.dart';
 import 'package:travelmate/NewTripScreen.dart';
 import 'package:travelmate/SettingsScreen.dart';
 import 'package:travelmate/ProfileScreen.dart';
-import 'package:travelmate/SplashScreen.dart'; // ✅ Ensure this file exists
+import 'package:travelmate/SplashScreen.dart';
 import 'auth_service.dart';
 import 'package:travelmate/services/notification_service.dart';
+import 'package:travelmate/VerifyEmailScreen.dart'; // ✅ Ensure this is imported
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await AuthService.initialize(); // ✅ Initialize Firebase
+  await AuthService.initialize();
 
   try {
     await NotificationService.init();
@@ -29,14 +30,24 @@ void main() async {
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
+
+  // This logic ensures the splash screen stays for 2 seconds and refreshes the user data
   Future<User?> _checkAuthWithDelay() async {
-    // Wait for BOTH the auth state AND a 2-second timer
+    final user = FirebaseAuth.instance.currentUser;
+
+    // ✅ CRITICAL: Refresh the user data from Firebase to check the latest verification status
+    if (user != null) {
+      await user.reload();
+    }
+
     final results = await Future.wait([
-      FirebaseAuth.instance.authStateChanges().first,
-      Future.delayed(const Duration(seconds: 2)),
+      Future.value(FirebaseAuth.instance.currentUser), // Get the reloaded user
+      Future.delayed(const Duration(seconds: 2)),      // Mandatory splash delay
     ]);
+
     return results[0] as User?;
   }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -46,18 +57,22 @@ class MyApp extends StatelessWidget {
         primarySwatch: Colors.green,
         useMaterial3: true,
       ),
-      // ✅ Use StreamBuilder to handle auto-login
       home: FutureBuilder<User?>(
         future: _checkAuthWithDelay(),
         builder: (context, snapshot) {
-          // Show splash screen while the 2-second timer is running
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const SplashScreen();
           }
 
-          // After 2 seconds, check if we have user data
-          if (snapshot.hasData && snapshot.data != null) {
-            return const HomeScreen();
+          final User? user = snapshot.data;
+
+          if (user != null) {
+            // ✅ CHECK: If logged in but NOT verified, force them to the Verify Screen
+            if (user.emailVerified) {
+              return const HomeScreen();
+            } else {
+              return const VerifyEmailScreen();
+            }
           }
 
           // Otherwise, go to Login
@@ -77,6 +92,7 @@ class MyApp extends StatelessWidget {
         '/accommodation': (context) => const AccommodationListScreen(),
         '/weather': (context) => const WeatherScreen(),
         '/calendar': (context) => const CalendarScreen(),
+        '/verify-email': (context) => const VerifyEmailScreen(),
       },
     );
   }

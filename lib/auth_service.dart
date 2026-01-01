@@ -90,4 +90,14 @@ class AuthService {
       throw "Error signing out: $e";
     }
   }
+  Future<void> sendVerificationEmail() async {
+    try {
+      User? user = _auth.currentUser;
+      if (user != null && !user.emailVerified) {
+        await user.sendEmailVerification();
+      }
+    } catch (e) {
+      throw "Error sending email: $e";
+    }
+  }
 }

@@ -50,37 +50,53 @@ class _LoginScreenState extends State<LoginScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  Future<void> _handleGoogleSignIn() async {
-    setState(() => _isLoading = true);
     try {
-      final success = await AuthService.signInWithGoogle();
-      if (success && mounted) {
-        Navigator.pushReplacementNamed(context, '/home');
-      } else {
-        setState(() => _isLoading = false);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Google Sign-In was cancelled'),
-              backgroundColor: Colors.orange,
-            ),
-          );
+      final user = await _authService.signIn(
+        email: emailController.text.trim(),
+        password: passwordController.text.trim(),
+      );
+
+      if (user != null && mounted) {
+        if (user.emailVerified) {
+          Navigator.pushReplacementNamed(context, '/home');
+        } else {
+          Navigator.pushReplacementNamed(context, '/verify-email');
         }
       }
     } catch (e) {
-      setState(() => _isLoading = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      // Show error
     }
   }
+
+  // Future<void> _handleGoogleSignIn() async {
+  //   setState(() => _isLoading = true);
+  //   try {
+  //     final success = await AuthService.signInWithGoogle();
+  //     if (success && mounted) {
+  //       Navigator.pushReplacementNamed(context, '/home');
+  //     } else {
+  //       setState(() => _isLoading = false);
+  //       if (mounted) {
+  //         ScaffoldMessenger.of(context).showSnackBar(
+  //           const SnackBar(
+  //             content: Text('Google Sign-In was cancelled'),
+  //             backgroundColor: Colors.orange,
+  //           ),
+  //         );
+  //       }
+  //     }
+  //   } catch (e) {
+  //     setState(() => _isLoading = false);
+  //     if (mounted) {
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         SnackBar(
+  //           content: Text('Error: ${e.toString()}'),
+  //           backgroundColor: Colors.red,
+  //         ),
+  //       );
+  //     }
+  //   }
+  // }
 
   @override
   Widget build(BuildContext context) {
@@ -170,25 +186,25 @@ class _LoginScreenState extends State<LoginScreen> {
                     _buildDivider(),
                     const SizedBox(height: 20),
 
-                    GestureDetector(
-                      onTap: _isLoading ? null : _handleGoogleSignIn,
-                      child: Container(
-                        height: 50,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(30),
-                          border: Border.all(color: Colors.grey),
-                          color: Colors.white,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Image.asset("assets/image/google.png", height: 22),
-                            const SizedBox(width: 10),
-                            const Text("Continue with Google", style: TextStyle(fontSize: 16)),
-                          ],
-                        ),
-                      ),
-                    ),
+                    // GestureDetector(
+                    //   onTap: _isLoading ? null : _handleGoogleSignIn,
+                    //   child: Container(
+                    //     height: 50,
+                    //     decoration: BoxDecoration(
+                    //       borderRadius: BorderRadius.circular(30),
+                    //       border: Border.all(color: Colors.grey),
+                    //       color: Colors.white,
+                    //     ),
+                    //     child: Row(
+                    //       mainAxisAlignment: MainAxisAlignment.center,
+                    //       children: [
+                    //         Image.asset("assets/image/google.png", height: 22),
+                    //         const SizedBox(width: 10),
+                    //         const Text("Continue with Google", style: TextStyle(fontSize: 16)),
+                    //       ],
+                    //     ),
+                    //   ),
+                    // ),
 
                     const SizedBox(height: 25),
 
